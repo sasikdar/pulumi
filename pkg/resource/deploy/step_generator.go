@@ -1,5 +1,7 @@
 // Copyright 2016-2018, Pulumi Corporation.
 //
+// Modifications copyright (C) 2021 Daniel Sokolowski
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -82,6 +84,30 @@ func (sg *stepGenerator) isTargetedReplace(urn resource.URN) bool {
 
 func (sg *stepGenerator) Errored() bool {
 	return sg.sawError
+}
+
+func isWish(resourceURN resource.URN) bool {
+	return resourceURN.QualifiedType() == "pulumi-nodejs:dynamic:Resource" &&
+		strings.HasPrefix(resourceURN.Name().String(), "wish$")
+}
+
+func isUnsatisfiedWish(resource *resource.State) bool {
+	return isWish(resource.URN) && resource.Outputs["isSatisfied"].V == false
+}
+
+func (sg *stepGenerator) isDependingOnUnsatisfiedWish(resource *resource.State) bool {
+	for _, depURN := range resource.Dependencies {
+		var dep, _ = sg.deployment.news.get(depURN)
+		if isUnsatisfiedWish(dep) {
+			logging.V(7).Infof("Resource '%v' depends on unsatisfied wish '%v'", resource.URN, depURN)
+			return true
+		}
+		if sg.isDependingOnUnsatisfiedWish(dep) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // GenerateReadSteps is responsible for producing one or more steps required to service
@@ -296,6 +322,28 @@ func (sg *stepGenerator) generateSteps(event RegisterResourceEvent) ([]Step, res
 			}, nil
 		}
 		return []Step{NewImportStep(sg.deployment, event, new, goal.IgnoreChanges)}, nil
+	}
+
+	// Case 0: depends on unsatisfied wish, overrules all vanilla-Pulumi cases below
+	if sg.isDependingOnUnsatisfiedWish(new) {
+		if hasOld && sg.deletes[urn] != true {
+			// This case should never occur, because wishes become replaced when they change from being satisfied to
+			// being unsatisfied. During this replacement, all resources depending on the wish should have been deleted
+			// already. However, to bare with weird state, we just delete instead of failing.
+			//return []Step{}, result.Errorf("Resource '%v' must not exist, because it depends on an unsatisfied wish")
+			logging.V(7).Infof("Planner decided to delete resource '%v', because it depends on an unsatisfied wish", urn)
+			logging.Errorf("Deleting resource '%v', because it depends on an unsatisfied wish. This should never happen!", urn)
+			sg.deletes[urn] = true
+			sg.skippedCreates[urn] = true
+			return []Step{NewDeleteStep(sg.deployment, old), NewSkippedCreateStep(sg.deployment, event, new)}, nil
+		}
+
+		logging.V(7).Infof("Planner decided to skip creation of resource '%v', because it depends on an unsatisfied wish", urn)
+		if sg.deletes[urn] != true {
+			sg.sames[urn] = true
+		}
+		sg.skippedCreates[urn] = true
+		return []Step{NewSkippedCreateStep(sg.deployment, event, new)}, nil
 	}
 
 	// Ensure the provider is okay with this resource and fetch the inputs to pass to subsequent methods.
@@ -1211,11 +1259,21 @@ func (sg *stepGenerator) calculateDependentReplacements(root *resource.State) ([
 	// before A could be deleted.
 	var toReplace []dependentReplace
 	replaceSet := map[resource.URN]bool{root.URN: true}
+	// Replaced wishes and resources depending on replaced wishes
+	wishReplaceSet := map[resource.URN]bool{root.URN: isWish(root.URN)}
 
 	requiresReplacement := func(r *resource.State) (bool, []resource.PropertyKey, result.Result) {
 		// Neither component nor external resources require replacement.
 		if !r.Custom || r.External {
 			return false, nil, nil
+		}
+
+		// If the resource depends on a replaced wish, it must be "replaced" (effectively, it gets deleted)
+		for _, depURN := range r.Dependencies {
+			if wishReplaceSet[depURN] {
+				wishReplaceSet[r.URN] = true
+				return true, nil, nil
+			}
 		}
 
 		// If the resource's provider is in the replace set, we mustreplace this resource.
@@ -1281,6 +1339,9 @@ func (sg *stepGenerator) calculateDependentReplacements(root *resource.State) ([
 			return nil, res
 		}
 		if replace {
+			if isWish(d.URN) {
+				wishReplaceSet[d.URN] = true
+			}
 			toReplace, replaceSet[d.URN] = append(toReplace, dependentReplace{res: d, keys: keys}), true
 		}
 	}
