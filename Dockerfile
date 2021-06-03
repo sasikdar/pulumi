@@ -1,11 +1,10 @@
 FROM golang:1.16.4-buster
 
-WORKDIR /var/pulumi
-COPY . .
-
 RUN apt-get update
-RUN apt-get install -y python-pip sudo
+RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+RUN apt-get install -y nodejs python-pip sudo
 RUN pip install pipenv
+RUN npm install -g yarn ts-node
 
 # Install golangci-lint
 RUN version=1.40.0 \
@@ -29,14 +28,17 @@ RUN groupadd --gid $USER_GID $USER_NAME \
     && echo "$USER_NAME ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/$USER_NAME \
     && chmod 0440 /etc/sudoers.d/$USER_NAME
 
+WORKDIR /var/pulumi
+COPY . .
+
 RUN mkdir -p /go/bin \
     && chown -R $USER_NAME: /go \
     && mkdir -p /opt/pulumi/bin \
     && chown -R $USER_NAME: /opt/pulumi \
-    && mkdir -p /var/pulumi \
     && chown -R $USER_NAME: /var/pulumi
 
 ENV PULUMI_SKIP_UPDATE_CHECK=true
+ENV USER=$USER_NAME
 
 USER $USER_NAME
 
@@ -47,3 +49,4 @@ RUN echo "export PATH=/opt/pulumi:/opt/pulumi/bin:$GOPATH/bin:/usr/local/go/bin:
     && echo "alias ls='ls --color=auto --group-directories-first'" >> ~/.bash_aliases
 
 RUN make install
+RUN cd sdk/nodejs && yarn && make build && make install

@@ -17,7 +17,7 @@ documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 To build and install the CLI, run `make install` in the repository's root directory.
 It will download all dependencies, build the CLI and install to `/opt/pulumi`.
-Make sure that a `/opt/pulumi` directory exists on your system before and that your user has the required read, write,
+Make sure that the `/opt/pulumi` directory exists on your system before and that your user has the required read, write,
 and execute permissions for it.
 
 µs programs will invoke the CLI as `pulumi`.
@@ -25,6 +25,7 @@ Prepend `/opt/pulumi:/opt/pulumi/bin` to the `PATH` environment variable to ensu
 of another Pulumi installation on your system.
 To suppress the upgrade version warning at start, set the environment variable `PULUMI_SKIP_UPDATE_CHECK`.
 This fork uses its own versioning scheme that will always result in showing an upgrade warning otherwise.
+For reference, look at our setup definition in [Dockerfile](Dockerfile), from which we build the Docker image (see below).
 
 To check whether your setup is correct, run `pulumi version`. It should only print the version number,
 which for this fork will always contain `-mjuz`, e.g., `v1.0.0-mjuz` or `v1.0.0-mjuz+dirty`.
@@ -32,7 +33,7 @@ If `-mjuz` is not in the printed version number, you are most likely executing a
 
 ## Docker
 
-We provide a docker image with of this CLI on Docker Hub as [mjuz/pulumi](https://hub.docker.com/r/mjuz/pulumi).
+We provide a Docker image of this CLI on Docker Hub as [mjuz/pulumi](https://hub.docker.com/r/mjuz/pulumi).
 It contains all dependencies and this repository's content in `/var/pulumi`,
-from which the µs Pulumi CLI is already installed.
-It can be re-installed inside the container by running `make install` in `/var/pulumi`.
+from which the µs Pulumi CLI and the Pulumi NodeJS language and resource plugins are already installed.
+It is built from [Dockerfile](Dockerfile), which might also serve as a reference for local setups.
