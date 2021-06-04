@@ -92,10 +92,13 @@ func isWish(resourceURN resource.URN) bool {
 }
 
 func isUnsatisfiedWish(resource *resource.State) bool {
-	return isWish(resource.URN) && resource.Outputs["isSatisfied"].V == false
+	return resource != nil && isWish(resource.URN) && resource.Outputs["isSatisfied"].V == false
 }
 
 func (sg *stepGenerator) isDependingOnUnsatisfiedWish(resource *resource.State) bool {
+	if resource == nil {
+		return false
+	}
 	for _, depURN := range resource.Dependencies {
 		var dep, _ = sg.deployment.news.get(depURN)
 		if isUnsatisfiedWish(dep) {
