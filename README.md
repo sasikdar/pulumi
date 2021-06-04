@@ -1,3 +1,4 @@
+[![DOI](https://zenodo.org/badge/372789418.svg)](https://zenodo.org/badge/latestdoi/372789418)
 [![GitHub version](https://badge.fury.io/gh/mjuz-iac%2Fpulumi.svg)](https://badge.fury.io/gh/mjuz-iac%2Fpulumi)
 
 # Pulumi for µs
